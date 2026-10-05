@@ -1,0 +1,50 @@
+- name: Deploy the DevOps Final stack
+  hosts: local
+  become: true
+  vars:
+    app_dir: /opt/devops-final
+    project_src: "{{ playbook_dir }}/.."
+  tasks:
+    - name: Check whether Docker is installed
+      ansible.builtin.command: docker --version
+      register: docker_check
+      changed_when: false
+      failed_when: false
+
+    - name: Install Docker and the compose plugin if missing
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - docker-compose-v2
+        state: present
+        update_cache: true
+      when: docker_check.rc != 0
+
+    - name: Make sure Docker is running
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Create the application directory
+      ansible.builtin.file:
+        path: "{{ app_dir }}/grafana"
+        state: directory
+        mode: "0755"
+
+    - name: Copy docker-compose.yml and prometheus.yml
+      ansible.builtin.copy:
+        src: "{{ project_src }}/{{ item }}"
+        dest: "{{ app_dir }}/{{ item }}"
+        mode: "0644"
+      loop:
+        - docker-compose.yml
+        - prometheus.yml
+        - grafana/datasources.yml
+
+    - name: Start the stack
+      ansible.builtin.command: docker compose up -d --no-build
+      args:
+        chdir: "{{ app_dir }}"
+      register: compose_up
+      changed_when: "'Started' in compose_up.stderr or 'Created' in compose_up.stderr"
